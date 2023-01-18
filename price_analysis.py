@@ -59,8 +59,8 @@ for year in [2019, 2020, 2021]:
     pred_endog = economic_data.loc[(economic_data.index >= start_date) &
                                    (economic_data.index <= end_date)]
 
-    train_exog = train_endog[['Inflation', 'GDP', 'PCX']]
-    pred_exog = pred_endog[['F_Inflation', 'F_GDP', 'F_PCX']]
+    train_exog = train_endog[['Inflation', 'PCX']]
+    pred_exog = pred_endog[['F_Inflation', 'F_PCX']]
 
     # Check for stationarity
     adf = adfuller(train_endog['price'].diff().dropna())
