@@ -1,6 +1,6 @@
 # Imports
 from statsmodels.tsa.statespace.varmax import VARMAX
-from statsmodels.tsa.stattools import acf, q_stat, adfuller
+from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.stattools import grangercausalitytests
 import seaborn as sns
 from numpy.linalg import LinAlgError
@@ -40,7 +40,7 @@ for metal in ['gold', 'silver', 'copper', 'aluminum', 'nickel']:
     # Set datetime as index
     tmp.set_index('Datetime', inplace=True)
     # Subset the data
-    tmp = tmp.loc['2014-12-01':'2021-12-01', '{}_price'.format(metal)]
+    tmp = tmp.loc['2016-01-01':'2021-12-01', '{}_price'.format(metal)]
     # Assign dataframe to dictionary
     economic_data = economic_data.join(tmp)
 
@@ -51,18 +51,18 @@ for metal in ['gold', 'silver', 'copper', 'aluminum', 'nickel']:
 # Define variables for VARMAX
 endog = economic_data[['gold_price', 'silver_price', 'copper_price', 'aluminum_price', 'nickel_price']]
 exog = economic_data[['IPX', 'PCX', 'Inflation']].dropna()
-exog_forecast = economic_data.loc['2019-04-01':'2019-12-01', ['F_IPX', 'F_PCX', 'F_Inflation']]
+exog_forecast = economic_data.loc['2021-04-01':'2021-12-01', ['F_IPX', 'F_PCX', 'F_Inflation']]
 
 # Plot time series
-# endog.plot(subplots=True, figsize=(13, 8))
+endog.plot(subplots=True, figsize=(13, 8))
 
 # Plot pairwise correlations
-# g = sns.clustermap(endog.corr(), annot=True)
-# ax = g.ax_heatmap
-# bottom, top = ax.get_ylim()
-# ax.set_ylim(bottom + 0.5, top - 0.5)
-# plt.title('Pairwise Correlations')
-# plt.show()
+g = sns.clustermap(endog.corr(), annot=True)
+ax = g.ax_heatmap
+bottom, top = ax.get_ylim()
+ax.set_ylim(bottom + 0.5, top - 0.5)
+plt.title('Pairwise Correlations')
+plt.show()
 
 
 #######################################################################################
@@ -88,15 +88,15 @@ def grangers_causation_matrix(data, variables, test='ssr_chi2test', verbose=Fals
     return df
 
 # Plot Granger's causation matrix
-# grangers_df = grangers_causation_matrix(endog, variables = endog.columns)
-#
-# plt.figure(figsize=(8, 5))
-# sns.heatmap(grangers_df, annot=True)
-# b, t = plt.ylim()
-# b += 0.5
-# t -= 0.5
-# plt.ylim(b, t)
-# plt.show()
+grangers_df = grangers_causation_matrix(endog, variables = endog.columns)
+
+plt.figure(figsize=(8, 5))
+sns.heatmap(grangers_df, annot=True)
+b, t = plt.ylim()
+b += 0.5
+t -= 0.5
+plt.ylim(b, t)
+plt.show()
 
 # Transform for stationarity
 endog_transformed = endog.apply(lambda x: x.diff()).dropna()
@@ -116,7 +116,7 @@ print(test_unit_root(endog_transformed))
 test_results = {}
 
 # Fit models in a loop and save results
-year = 2019
+year = 2021
 
 # Subset data for training
 start_date = str(year) + '-04-01'
@@ -155,7 +155,6 @@ for p in range(3):
                                 convergence_error,
                                 stationarity_error]
 
-
 # Refit the best model
 model = VARMAX(train_endog, order=(1, 0)).fit(maxiter=1000)
 
@@ -165,3 +164,48 @@ model = VARMAX(train_endog, order=(1, 0)).fit(maxiter=1000)
 
 # Generate forecast with best model
 forecast = model.forecast(start_date=start_date, dynamic=True, steps=9)
+
+# Adjust forecast back for original price units (inverse differencing)
+fc_cumsum = np.cumsum(forecast, axis=0)
+
+# Extract baseline value from data
+baseline = endog.loc['2021-04-01', :]
+
+# Generate full price forecasts
+full_forecasts = baseline + fc_cumsum
+
+
+# Define function to calculate MAPE for predictions
+def get_mape(endog, full_forecasts):
+    """
+    Calculates MAPE for each column in a dataframe
+
+    :param endog: dataframe of actuals, same size as forecast dataframe
+    :param full_forecasts: dataframe of forecasts
+    :return: MAPE for each series (column) in the data
+    """
+    ape_matrix = endog.subtract(full_forecasts)
+    ape_matrix = ape_matrix.divide(endog)
+    ape_matrix = np.where(ape_matrix > 100, 100, ape_matrix)
+    mape = ape_matrix.mean(axis=0).round(2)
+
+    return mape
+
+# Define actuals
+actuals = endog.loc['2021-04-01':'2021-12-01', :]
+
+# Calculate MAPE
+mape = get_mape(actuals, full_forecasts)
+print(mape)
+
+# Join forecasts to actuals
+actuals = actuals.join(full_forecasts, rsuffix='_fc')
+
+# Plot result
+actuals.plot(subplots=[('gold_price', 'gold_price_fc'),
+                       ('silver_price', 'silver_price_fc'),
+                       ('copper_price', 'copper_price_fc'),
+                       ('aluminum_price', 'aluminum_price_fc'),
+                       ('nickel_price', 'nickel_price_fc')])
+plt.legend()
+plt.show()

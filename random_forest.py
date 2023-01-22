@@ -118,7 +118,7 @@ for year in [2019, 2020, 2021]:
                                           n_jobs=-1)
 
     # Parameters
-    params = {'max_features': [2, 3, 4, 5]}
+    params = {'max_features': [3, 4, 5, 6, 7]}
 
     # Perform GridSearch
     gridsearch = GridSearchCV(random_forest, params, cv=6)

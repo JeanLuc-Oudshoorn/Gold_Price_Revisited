@@ -1,4 +1,4 @@
 Year,MAPE,Params
 2019,10.55,{'max_features': 3}
-2020,17.04,{'max_features': 2}
+2020,16.91,{'max_features': 3}
 2021,1.89,{'max_features': 3}
