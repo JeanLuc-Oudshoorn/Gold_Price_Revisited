@@ -3,12 +3,10 @@ from statsmodels.tsa.statespace.varmax import VARMAX
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.stattools import grangercausalitytests
 import seaborn as sns
-from numpy.linalg import LinAlgError
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import warnings
-import pickle
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=UserWarning)
@@ -29,7 +27,7 @@ economic_data['Datetime'] = pd.to_datetime(economic_data['Datetime'], format='%Y
 economic_data.set_index('Datetime', inplace=True)
 
 # Pre-process and join all metal dataframes to the economic data
-for metal in ['gold', 'silver', 'copper', 'aluminum', 'nickel']:
+for metal in ['gold', 'silver']:
     # Read CSV-file
     tmp = pd.read_csv('{}_price.csv'.format(metal))
     # Rename necessary columns
@@ -49,9 +47,9 @@ for metal in ['gold', 'silver', 'copper', 'aluminum', 'nickel']:
 #######################################################################################
 
 # Define variables for VARMAX
-endog = economic_data[['gold_price', 'silver_price', 'copper_price', 'aluminum_price', 'nickel_price']]
-exog = economic_data[['IPX', 'PCX', 'Inflation']].dropna()
-exog_forecast = economic_data.loc['2021-04-01':'2021-12-01', ['F_IPX', 'F_PCX', 'F_Inflation']]
+endog = economic_data[['gold_price', 'silver_price']]
+exog = economic_data[['PCX', 'Inflation']].dropna()
+exog_forecast = economic_data.loc['2019-04-01':'2019-12-01', ['F_PCX', 'F_Inflation']]
 
 # Plot time series
 endog.plot(subplots=True, figsize=(13, 8))
@@ -116,15 +114,14 @@ print(test_unit_root(endog_transformed))
 test_results = {}
 
 # Fit models in a loop and save results
-year = 2021
+year = 2019
 
 # Subset data for training
 start_date = str(year) + '-04-01'
 end_date = str(year) + '-12-01'
 
 train_endog = endog_transformed.loc[(endog_transformed.index < start_date)]
-pred_endog = endog_transformed.loc[(endog_transformed.index >= start_date) &
-                                   (endog_transformed.index <= end_date)]
+train_exog = exog.loc[train_endog.index, :]
 
 # Test different values for p and q
 for p in range(3):
@@ -133,17 +130,10 @@ for p in range(3):
             continue
 
         print(f'Testing Order: p = {p}, q = {q}')
-        convergence_error = stationarity_error = 0
 
-        try:
-            model = VARMAX(train_endog, order=(p, q))
-            model_result = model.fit(maxiter=1000, disp=False)
+        model = VARMAX(train_endog, order=(p, q), exog=train_exog)
+        model_result = model.fit(maxiter=1000, disp=False)
 
-        except LinAlgError:
-            convergence_error += 1
-
-        except ValueError:
-            stationarity_error += 1
 
         print('\nAIC:', model_result.aic)
         print('BIC:', model_result.bic)
@@ -151,25 +141,23 @@ for p in range(3):
         print('------------------------')
 
         test_results[(p, q)] = [model_result.aic,
-                                model_result.bic,
-                                convergence_error,
-                                stationarity_error]
+                                model_result.bic]
 
 # Refit the best model
-model = VARMAX(train_endog, order=(1, 0)).fit(maxiter=1000)
+model = VARMAX(train_endog, order=(1, 2), exog=train_exog).fit(maxiter=1000)
 
 #######################################################################################
 #                              5. Forecast into Future                                #
 #######################################################################################
 
 # Generate forecast with best model
-forecast = model.forecast(start_date=start_date, dynamic=True, steps=9)
+forecast = model.forecast(start_date=start_date, dynamic=True, steps=9, exog=exog_forecast)
 
 # Adjust forecast back for original price units (inverse differencing)
 fc_cumsum = np.cumsum(forecast, axis=0)
 
 # Extract baseline value from data
-baseline = endog.loc['2021-04-01', :]
+baseline = endog.loc['2019-04-01', :]
 
 # Generate full price forecasts
 full_forecasts = baseline + fc_cumsum
@@ -184,15 +172,15 @@ def get_mape(endog, full_forecasts):
     :param full_forecasts: dataframe of forecasts
     :return: MAPE for each series (column) in the data
     """
-    ape_matrix = endog.subtract(full_forecasts)
-    ape_matrix = ape_matrix.divide(endog)
+    ape_matrix = np.abs(endog.subtract(full_forecasts))
+    ape_matrix = (ape_matrix.divide(endog) * 100).dropna()
     ape_matrix = np.where(ape_matrix > 100, 100, ape_matrix)
     mape = ape_matrix.mean(axis=0).round(2)
 
     return mape
 
 # Define actuals
-actuals = endog.loc['2021-04-01':'2021-12-01', :]
+actuals = endog.loc['2019-04-01':'2019-12-01', :]
 
 # Calculate MAPE
 mape = get_mape(actuals, full_forecasts)
@@ -203,9 +191,6 @@ actuals = actuals.join(full_forecasts, rsuffix='_fc')
 
 # Plot result
 actuals.plot(subplots=[('gold_price', 'gold_price_fc'),
-                       ('silver_price', 'silver_price_fc'),
-                       ('copper_price', 'copper_price_fc'),
-                       ('aluminum_price', 'aluminum_price_fc'),
-                       ('nickel_price', 'nickel_price_fc')])
+                       ('silver_price', 'silver_price_fc')])
 plt.legend()
 plt.show()
