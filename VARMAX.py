@@ -27,7 +27,7 @@ economic_data['Datetime'] = pd.to_datetime(economic_data['Datetime'], format='%Y
 economic_data.set_index('Datetime', inplace=True)
 
 # Pre-process and join all metal dataframes to the economic data
-for metal in ['gold', 'silver']:
+for metal in ['gold', 'silver', 'copper']:
     # Read CSV-file
     tmp = pd.read_csv('{}_price.csv'.format(metal))
     # Rename necessary columns
@@ -47,7 +47,7 @@ for metal in ['gold', 'silver']:
 #######################################################################################
 
 # Define variables for VARMAX
-endog = economic_data[['gold_price', 'silver_price']]
+endog = economic_data[['gold_price', 'silver_price', 'copper_price']]
 exog = economic_data[['PCX', 'Inflation']].dropna()
 exog_forecast = economic_data.loc['2019-04-01':'2019-12-01', ['F_PCX', 'F_Inflation']]
 
@@ -144,7 +144,7 @@ for p in range(3):
                                 model_result.bic]
 
 # Refit the best model
-model = VARMAX(train_endog, order=(1, 2), exog=train_exog).fit(maxiter=1000)
+model = VARMAX(train_endog, order=(1, 0), exog=train_exog).fit(maxiter=1000)
 
 #######################################################################################
 #                              5. Forecast into Future                                #
@@ -191,6 +191,7 @@ actuals = actuals.join(full_forecasts, rsuffix='_fc')
 
 # Plot result
 actuals.plot(subplots=[('gold_price', 'gold_price_fc'),
-                       ('silver_price', 'silver_price_fc')])
+                       ('silver_price', 'silver_price_fc'),
+                       ('copper_price', 'copper_price_fc')])
 plt.legend()
 plt.show()
